@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "qspace-myelin: NLD myelin mapping from q-space diffusion MRI"
+version: "0.1.0"
+date-released: "2024-01-01"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/rafaelsommer1/qspace-myelin"
+
+authors:
+  - family-names: "Canani Sommer"
+    given-names: "Rafael"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    # affiliation: "PUCRS"
+
+abstract: >
+  qspace-myelin implements the Normalized Leptokurtic Diffusion (NLD)
+  myelin mapping method for q-space diffusion MRI data. For each voxel,
+  the water displacement probability density function is estimated via
+  Fourier transform of the multi-shell signal decay, and excess kurtosis
+  is derived and normalized to produce an index sensitive to myelination.
+  The package includes a command-line tool, a PyQt6 graphical interface,
+  and a full preprocessing pipeline that uses standard neuroimaging tools from Mrtrix, FSL and ANTs (denoising, eddy correction,
+  registration).
+
+keywords:
+  - diffusion MRI
+  - myelin
+  - q-space imaging
+  - white matter
+  - neuroimaging
+  - kurtosis
+  - NLD
+
+references:
+  - type: article
+    title: "Application of q-Space Diffusion MRI for the Visualization of White Matter"
+    authors:
+      - family-names: Fujiyoshi
+        given-names: Kanehiro
+    journal: "Journal of Neuroscience"
+    volume: 36
+    issue: 9
+    start: 2796
+    end: 2808
+    year: 2016
+    doi: "10.1523/JNEUROSCI.1770-15.2016"

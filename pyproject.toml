@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "qspace-myelin"
+version = "0.1.0"
+description = "NLD myelin mapping from q-space diffusion MRI (Fujiyoshi et al., 2016)"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.10"
+
+authors = [
+    { name = "Rafael Canani Sommer", email = "rafaelcasommer@gmail.com },
+    { name = "Douglas Kazutoshi Sato", email = "dsato@hcpa.edu.br" }
+]
+
+keywords = [
+    "diffusion MRI", "myelin", "q-space", "neuroimaging",
+    "white matter", "NLD", "kurtosis",
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+]
+
+dependencies = [
+    "numpy>=1.24",
+    "nibabel>=5.0",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+gui = ["PyQt6>=6.4"]
+dev = ["pytest>=7", "ruff", "build", "twine"]
+all = ["qspace-myelin[gui,dev]"]
+
+[project.urls]
+Homepage   = "https://github.com/rafaelsommer1/qspace-myelin"
+Repository = "https://github.com/rafaelsommer1/qspace-myelin"
+Issues     = "https://github.com/rafaelsommer1/qspace-myelin/issues"
+
+[project.scripts]
+myelin-map     = "qspace_myelin.myelin_map:main"
+myelin-map-gui = "qspace_myelin.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["qspace_myelin*"]
+
+[tool.setuptools.package-data]
+qspace_myelin = ["pipeline_myelin_map.sh"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

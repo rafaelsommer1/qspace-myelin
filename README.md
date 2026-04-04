@@ -90,8 +90,7 @@ bash pipeline_myelin_map.sh \
 | Parameter | Value |
 |---|---|
 | Acquisition | Multi-shell DWI |
-| b-values | 9 shells: 0–10,000 s/mm² |
-| Directions | ≥ 6 MPG directions per shell |
+| b-values | multiple shells, validated with 9 steps: 0–10,000 s/mm² |
 | Format | NIfTI + FSL-style bval/bvec |
 
 ---
@@ -137,8 +136,8 @@ If you use qspace-myelin in your research, please cite both the software and the
 
 **Software:**
 ```
-YOUR NAME (2024). qspace-myelin: NLD myelin mapping from q-space diffusion MRI.
-GitHub. https://github.com/YOUR_USERNAME/qspace-myelin
+qspace-myelin: NLD myelin mapping from q-space diffusion MRI.
+GitHub. https://github.com/rafaelsommer1/qspace-myelin
 ```
 
 **Method:**
@@ -148,8 +147,8 @@ Visualization of White Matter. Journal of Neuroscience, 36(9), 2796–2808.
 https://doi.org/10.1523/JNEUROSCI.1770-15.2016
 ```
 
-> **Note on AI-assisted development:** The implementation was developed with
-> AI-assisted code generation (Claude, Anthropic), guided by the authors based
+> **Note on AI-assisted development:** The implementation was developed by the authors, using
+> AI-assisted code generation (Claude, Anthropic) to structure and optimize code.
 > on the methodology in Fujiyoshi et al. (2016). All scientific decisions,
 > parameter choices, and validation were performed by the authors.
 

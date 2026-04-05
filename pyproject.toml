@@ -1,19 +1,15 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "qspace-myelin"
 version = "0.1.0"
 description = "NLD myelin mapping from q-space diffusion MRI (Fujiyoshi et al., 2016)"
 readme = "README.md"
-license = { text = "GPL-3.0-or-later" }
 requires-python = ">=3.10"
-
-authors = [
-    { name = "Rafael Canani Sommer", email = "rafaelcasommer@gmail.com },
-    { name = "Douglas Kazutoshi Sato", email = "dsato@hcpa.edu.br" }
-]
+license = {text = "GPL-3.0-or-later"}
+authors = [{name = "YOUR NAME HERE", email = "your@email.com"}]
 
 keywords = [
     "diffusion MRI", "myelin", "q-space", "neuroimaging",
@@ -46,13 +42,14 @@ dev = ["pytest>=7", "ruff", "build", "twine"]
 all = ["qspace-myelin[gui,dev]"]
 
 [project.urls]
-Homepage   = "https://github.com/rafaelsommer1/qspace-myelin"
-Repository = "https://github.com/rafaelsommer1/qspace-myelin"
-Issues     = "https://github.com/rafaelsommer1/qspace-myelin/issues"
+Homepage   = "https://github.com/YOUR_USERNAME/qspace-myelin"
+Repository = "https://github.com/YOUR_USERNAME/qspace-myelin"
+Issues     = "https://github.com/YOUR_USERNAME/qspace-myelin/issues"
 
 [project.scripts]
 myelin-map     = "qspace_myelin.myelin_map:main"
 myelin-map-gui = "qspace_myelin.gui:main"
+myelin-vis     = "qspace_myelin.visualize_nld:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -3,8 +3,9 @@
 qspace-myelin — Graphical Interface
 =====================================
 PyQt6 desktop GUI for:
-  - Tab 1: myelin_map.py  (NLD computation only)
+  - Tab 1: myelin_map.py       (NLD computation)
   - Tab 2: pipeline_myelin_map.sh  (full preprocessing + NLD)
+  - Tab 3: visualize_nld.py    (publication-quality figures)
 
 Requirements:
     pip install PyQt6
@@ -36,8 +37,9 @@ from PyQt6.QtWidgets import (
 
 # ── paths ─────────────────────────────────────────────────────────────────────
 _HERE = Path(__file__).resolve().parent
-MYELIN_SCRIPT   = _HERE / "myelin_map.py"
-PIPELINE_SCRIPT = _HERE / "pipeline_myelin_map.sh"
+MYELIN_SCRIPT      = _HERE / "myelin_map.py"
+PIPELINE_SCRIPT    = _HERE / "pipeline_myelin_map.sh"
+VISUALIZE_SCRIPT   = _HERE / "visualize_nld.py"
 
 # ── palette ───────────────────────────────────────────────────────────────────
 _STYLE = """
@@ -805,6 +807,301 @@ class PipelineTab(QWidget):
         self.stop_btn.setEnabled(False)
 
 
+# ── Tab 3: visualization ─────────────────────────────────────────────────────
+
+class VisualizationTab(QWidget):
+    """Controls for visualize_nld.py — generates publication-quality figures."""
+
+    _CMAPS = ["hot", "paper", "thermal", "plasma", "inferno", "viridis"]
+    _CMAP_DESC = {
+        "hot":     "Black → red → yellow  (high contrast)",
+        "paper":   "White → blue  (Fujiyoshi et al. style)",
+        "thermal": "Black → blue → cyan → yellow → white",
+        "plasma":  "Purple → magenta → yellow",
+        "inferno": "Black → purple → orange  (colourblind-safe)",
+        "viridis": "Purple → teal → yellow  (perceptually uniform)",
+    }
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._runner = ProcessRunner(self)
+        self._runner.stdout_line.connect(self._on_stdout)
+        self._runner.stderr_line.connect(self._on_stderr)
+        self._runner.finished.connect(self._on_finished)
+        self._output_prefix = ""
+        self._build_ui()
+
+    # ── UI ───────────────────────────────────────────────────────────────────
+
+    def _build_ui(self):
+        root = QHBoxLayout(self)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        root.addWidget(splitter)
+
+        # ── Left: controls ────────────────────────────────────────────────
+        ctrl_scroll = QScrollArea()
+        ctrl_scroll.setWidgetResizable(True)
+        ctrl_scroll.setMinimumWidth(400)
+        ctrl_scroll.setMaximumWidth(500)
+        ctrl_widget = QWidget()
+        ctrl_scroll.setWidget(ctrl_widget)
+        ctrl = QVBoxLayout(ctrl_widget)
+        ctrl.setSpacing(10)
+
+        # — Input files —
+        grp_in = QGroupBox("Input files")
+        gi = QVBoxLayout(grp_in)
+        self.f_nld  = FileField("NLD map",    filter_="NIfTI (*.nii *.nii.gz)")
+        self.f_t1   = FileField("T1 brain",   filter_="NIfTI (*.nii *.nii.gz)", optional=True)
+        self.f_mask = FileField("Brain mask", filter_="NIfTI (*.nii *.nii.gz)", optional=True)
+        for w in [self.f_nld, self.f_t1, self.f_mask]:
+            gi.addWidget(w)
+        ctrl.addWidget(grp_in)
+
+        # — Colormap —
+        grp_cmap = QGroupBox("Colormap")
+        gc = QVBoxLayout(grp_cmap)
+        cmap_row = QHBoxLayout()
+        self.cmap_combo = QComboBox()
+        self.cmap_combo.addItems(self._CMAPS)
+        self.cmap_combo.setCurrentText("hot")
+        self.cmap_combo.currentTextChanged.connect(self._on_cmap_changed)
+        self._cmap_desc = QLabel(self._CMAP_DESC["hot"])
+        self._cmap_desc.setObjectName("section_label")
+        self._cmap_desc.setWordWrap(True)
+        cmap_row.addWidget(QLabel("Colormap:"))
+        cmap_row.addWidget(self.cmap_combo, stretch=1)
+        gc.addLayout(cmap_row)
+        gc.addWidget(self._cmap_desc)
+        ctrl.addWidget(grp_cmap)
+
+        # — Display window —
+        grp_win = QGroupBox("Display window  (NLD)")
+        gw = QFormLayout(grp_win)
+        gw.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.vmin = QDoubleSpinBox()
+        self.vmin.setRange(0, 100); self.vmin.setValue(10)
+        self.vmin.setSuffix("  NLD"); self.vmin.setDecimals(1)
+        self.vmin.setToolTip("Lower NLD display bound. Voxels below this value are transparent.")
+
+        self.vmax = QDoubleSpinBox()
+        self.vmax.setRange(0, 100); self.vmax.setValue(95)
+        self.vmax.setSuffix("  NLD"); self.vmax.setDecimals(1)
+        self.vmax.setToolTip("Upper NLD display bound.")
+
+        self.alpha = QDoubleSpinBox()
+        self.alpha.setRange(0.1, 1.0); self.alpha.setValue(0.80)
+        self.alpha.setSingleStep(0.05); self.alpha.setDecimals(2)
+        self.alpha.setToolTip("Overlay opacity over the T1 background (1 = opaque).")
+
+        self.auto_window = QCheckBox("Auto window  (P2–P98 from data)")
+        self.auto_window.setChecked(True)
+        self.auto_window.toggled.connect(self._on_auto_window)
+
+        gw.addRow("",        self.auto_window)
+        gw.addRow("V min:",  self.vmin)
+        gw.addRow("V max:",  self.vmax)
+        gw.addRow("Alpha:",  self.alpha)
+        self._on_auto_window(True)
+        ctrl.addWidget(grp_win)
+
+        # — Figures to generate —
+        grp_fig = QGroupBox("Figures to generate")
+        gf = QVBoxLayout(grp_fig)
+        self.chk_montage   = QCheckBox("Montage  — multi-slice axial grid")
+        self.chk_triplane  = QCheckBox("Triplane  — axial + coronal + sagittal")
+        self.chk_mosaic    = QCheckBox("Mosaic  — all slices overview")
+        self.chk_histogram = QCheckBox("Histogram  — NLD distribution")
+        for chk in [self.chk_montage, self.chk_triplane,
+                    self.chk_mosaic, self.chk_histogram]:
+            chk.setChecked(True)
+            gf.addWidget(chk)
+        ctrl.addWidget(grp_fig)
+
+        # — Options —
+        grp_opt = QGroupBox("Options")
+        go = QFormLayout(grp_opt)
+        go.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.ncols = QSpinBox()
+        self.ncols.setRange(3, 12); self.ncols.setValue(6)
+        self.ncols.setToolTip("Number of columns in the montage grid.")
+
+        self.dpi = QSpinBox()
+        self.dpi.setRange(72, 600); self.dpi.setValue(300)
+        self.dpi.setSuffix("  dpi")
+
+        self.axis = QComboBox()
+        self.axis.addItems(["Axial (z)", "Coronal (y)", "Sagittal (x)"])
+
+        go.addRow("Montage cols:", self.ncols)
+        go.addRow("Resolution:",   self.dpi)
+        go.addRow("Slice axis:",   self.axis)
+        ctrl.addWidget(grp_opt)
+
+        # — Output —
+        grp_out = QGroupBox("Output")
+        gout = QVBoxLayout(grp_out)
+        self.f_out = FileField("Prefix", mode="save",
+                               placeholder="e.g. /data/figures/sub01")
+        gout.addWidget(self.f_out)
+        ctrl.addWidget(grp_out)
+
+        # — Run controls —
+        btn_row = QHBoxLayout()
+        self.run_btn  = QPushButton("▶  Generate figures")
+        self.run_btn.setObjectName("run_btn")
+        self.stop_btn = QPushButton("■  Stop")
+        self.stop_btn.setObjectName("stop_btn")
+        self.stop_btn.setEnabled(False)
+        self.run_btn.clicked.connect(self._run)
+        self.stop_btn.clicked.connect(self._stop)
+        btn_row.addWidget(self.run_btn)
+        btn_row.addWidget(self.stop_btn)
+        ctrl.addLayout(btn_row)
+        ctrl.addStretch()
+
+        # ── Right: log + preview ──────────────────────────────────────────
+        right = QWidget()
+        rl = QVBoxLayout(right)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.progress.setVisible(False)
+        rl.addWidget(self.progress)
+
+        log_label = QLabel("Output log")
+        log_label.setObjectName("section_label")
+        rl.addWidget(log_label)
+        self.log = LogWidget()
+        self.log.setMaximumHeight(160)
+        rl.addWidget(self.log)
+
+        prev_label = QLabel("Preview  (click figures to refresh)")
+        prev_label.setObjectName("section_label")
+        rl.addWidget(prev_label)
+
+        # Tab widget for figure previews
+        self.preview_tabs = QTabWidget()
+        self.preview_tabs.setStyleSheet(
+            "QTabBar::tab { min-width: 100px; padding: 4px 12px; }")
+        self._previews: dict[str, ImagePreview] = {}
+        for name in ["montage", "triplane", "mosaic", "histogram"]:
+            pv = ImagePreview()
+            self.preview_tabs.addTab(pv, name.capitalize())
+            self._previews[name] = pv
+        rl.addWidget(self.preview_tabs, stretch=1)
+
+        splitter.addWidget(ctrl_scroll)
+        splitter.addWidget(right)
+        splitter.setSizes([420, 860])
+
+    # ── slots ─────────────────────────────────────────────────────────────
+
+    def _on_cmap_changed(self, name: str):
+        self._cmap_desc.setText(self._CMAP_DESC.get(name, ""))
+
+    def _on_auto_window(self, checked: bool):
+        self.vmin.setEnabled(not checked)
+        self.vmax.setEnabled(not checked)
+
+    def _on_stdout(self, line: str):
+        self.log.log_stdout(line)
+        # Auto-refresh preview when a file is saved
+        if "Saved:" in line:
+            path = line.split("Saved:")[-1].strip()
+            for name in ["montage", "triplane", "mosaic", "histogram"]:
+                if f"_{name}.png" in path:
+                    self._previews[name].load_images([path])
+                    idx = ["montage","triplane","mosaic","histogram"].index(name)
+                    self.preview_tabs.setCurrentIndex(idx)
+
+    def _on_stderr(self, line: str):
+        self.log.log_stderr(line)
+
+    def _on_finished(self, code: int):
+        self.progress.setVisible(False)
+        self.run_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        if code == 0:
+            self.log.log_system("Done.")
+            self.window().statusBar().showMessage("Figures generated.", 8000)
+        else:
+            self.log.log_system(f"Exited with code {code}.")
+            self.window().statusBar().showMessage(f"Error (code {code}).", 8000)
+
+    # ── run ───────────────────────────────────────────────────────────────
+
+    def _build_args(self) -> tuple[str, list[str]] | None:
+        errors = []
+        if not self.f_nld.value: errors.append("NLD map is required.")
+        if not self.f_out.value: errors.append("Output prefix is required.")
+        if self.f_nld.value and not Path(self.f_nld.value).exists():
+            errors.append(f"NLD file not found: {self.f_nld.value}")
+
+        if errors:
+            QMessageBox.critical(self, "Missing inputs", "\n".join(errors))
+            return None
+
+        if not VISUALIZE_SCRIPT.exists():
+            QMessageBox.critical(
+                self, "Script not found",
+                f"visualize_nld.py not found at:\n{VISUALIZE_SCRIPT}")
+            return None
+
+        axis_map = {"Axial (z)": "2", "Coronal (y)": "1", "Sagittal (x)": "0"}
+
+        args = [
+            str(VISUALIZE_SCRIPT),
+            "--nld",    self.f_nld.value,
+            "--output", self.f_out.value,
+            "--cmap",   self.cmap_combo.currentText(),
+            "--alpha",  str(self.alpha.value()),
+            "--ncols",  str(self.ncols.value()),
+            "--dpi",    str(self.dpi.value()),
+            "--axis",   axis_map[self.axis.currentText()],
+        ]
+
+        if self.f_t1.value:   args += ["--t1",   self.f_t1.value]
+        if self.f_mask.value: args += ["--mask",  self.f_mask.value]
+
+        if not self.auto_window.isChecked():
+            args += ["--vmin", str(self.vmin.value()),
+                     "--vmax", str(self.vmax.value())]
+
+        if not self.chk_montage.isChecked():   args.append("--no-montage")
+        if not self.chk_triplane.isChecked():  args.append("--no-triplane")
+        if not self.chk_mosaic.isChecked():    args.append("--no-mosaic")
+        if not self.chk_histogram.isChecked(): args.append("--no-histogram")
+
+        return sys.executable, args
+
+    def _run(self):
+        result = self._build_args()
+        if result is None:
+            return
+        program, args = result
+        self._output_prefix = self.f_out.value
+
+        self.log.clear_log()
+        self.log.log_system("Starting visualization")
+
+        self.run_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.progress.setVisible(True)
+        self.window().statusBar().showMessage("Generating figures…")
+
+        self._runner.start(program, args)
+
+    def _stop(self):
+        self._runner.stop()
+        self.log.log_system("Stopped by user.")
+        self.progress.setVisible(False)
+        self.run_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+
+
 # ── main window ───────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
@@ -816,8 +1113,9 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 600)
 
         tabs = QTabWidget()
-        tabs.addTab(MyelinMapTab(), "  NLD Myelin Map  ")
-        tabs.addTab(PipelineTab(),  "  Full Pipeline   ")
+        tabs.addTab(MyelinMapTab(),     "  NLD Myelin Map  ")
+        tabs.addTab(PipelineTab(),      "  Full Pipeline   ")
+        tabs.addTab(VisualizationTab(), "  Visualization   ")
         self.setCentralWidget(tabs)
 
         bar = QStatusBar()
